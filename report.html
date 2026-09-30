@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#202724">
+    <title>Relatório da live · Live Room</title>
+    <link id="report-stylesheet" rel="stylesheet" href="report.css">
+</head>
+<body>
+    <header class="report-toolbar" data-export-ignore>
+        <a class="brand" href="#" aria-label="Live Room">
+            <span class="brand-mark">L</span><span>live<span class="brand-light">room</span></span>
+        </a>
+        <div class="toolbar-actions">
+            <button class="toolbar-button" id="save-html" type="button">Baixar HTML</button>
+            <button class="toolbar-button" id="save-image" type="button">Baixar imagem PNG</button>
+        </div>
+    </header>
+
+    <main class="report-document" id="report-document">
+        <section class="report-hero">
+            <div class="hero-copy">
+                <p class="eyebrow"><span class="live-dot"></span> SESSÃO ENCERRADA <span class="eyebrow-divider">/</span> RELATÓRIO DE INGLÊS</p>
+                <h1>Seu inglês<br><em>em jogo.</em></h1>
+                <p class="report-summary" id="report-summary">Preparando sua análise de aprendizado...</p>
+            </div>
+            <div class="hero-stamp" aria-hidden="true"><span>LIVE</span><strong>↗</strong><span>REVIEW</span></div>
+            <div class="hero-meta"><span>SESSÃO DE PRÁTICA</span><time id="report-date"></time></div>
+        </section>
+
+        <section class="metrics-section" aria-labelledby="metrics-title">
+            <div class="section-heading">
+                <div><p class="section-index">01 <span>/ PROGRESSO</span></p><h2 id="metrics-title">Leitura da sessão</h2></div>
+                <p class="metrics-note">Estimativas didáticas baseadas no texto transcrito, não medem pronúncia.</p>
+            </div>
+            <div class="metrics-layout">
+                <div class="metrics-chart" id="metrics-chart" aria-label="Gráfico de indicadores de inglês"></div>
+                <aside class="chart-aside">
+                    <span class="chart-aside-mark">✳</span>
+                    <p>Use estes indicadores para escolher o que praticar na próxima live. Eles não são uma nota oficial de proficiência.</p>
+                    <span class="chart-legend"><i></i> INDICADOR DA SESSÃO <b>0–100</b></span>
+                </aside>
+            </div>
+        </section>
+
+        <section class="feedback-section" aria-label="Feedback da sessão">
+            <div class="section-heading">
+                <div><p class="section-index">02 <span>/ FEEDBACK</span></p><h2>O que funcionou e o que evoluir</h2></div>
+            </div>
+            <div class="feedback-columns">
+                <article class="feedback-column strengths-column">
+                    <div class="column-heading"><span class="column-symbol">+</span><h3>Pontos fortes</h3></div>
+                    <ul id="strengths-list"></ul>
+                </article>
+                <article class="feedback-column attention-column">
+                    <div class="column-heading"><span class="column-symbol">~</span><h3>Pontos de atenção</h3></div>
+                    <ul id="weaknesses-list"></ul>
+                </article>
+                <article class="feedback-column action-column">
+                    <div class="column-heading"><span class="column-symbol">→</span><h3>Próximos passos</h3></div>
+                    <ul id="improvements-list"></ul>
+                </article>
+            </div>
+        </section>
+
+        <section class="language-section" aria-label="Estudo de inglês">
+            <div class="section-heading">
+                <div><p class="section-index">03 <span>/ ESTUDO</span></p><h2>Frases para levar pra próxima live</h2></div>
+            </div>
+            <div class="study-grid">
+                <article class="study-column">
+                    <div class="study-heading"><span class="study-number">A</span><div><p>MAIS NATURAL</p><h3>Ajustes de inglês</h3></div></div>
+                    <div class="study-list" id="corrections-list"></div>
+                </article>
+                <article class="study-column vocabulary-column">
+                    <div class="study-heading"><span class="study-number">B</span><div><p>VOCABULÁRIO GAMER</p><h3>Outras formas de dizer</h3></div></div>
+                    <div class="study-list" id="vocabulary-list"></div>
+                </article>
+            </div>
+        </section>
+
+        <section class="report-notice" id="report-notice" hidden role="status"></section>
+        <footer class="report-document-footer"><span>LIVE ROOM <span>/ ENGLISH PRACTICE</span></span><span>UMA SESSÃO DE CADA VEZ.</span></footer>
+    </main>
+
+    <footer class="report-actions" data-export-ignore>
+        <span id="export-feedback" role="status" aria-live="polite"></span>
+        <div class="navigation-actions">
+            <button class="back-button" id="back-button" type="button">Voltar à configuração</button>
+            <button class="quit-button" id="quit-button" type="button">Fechar aplicativo</button>
+        </div>
+    </footer>
+    <div class="loading-overlay" id="loading-overlay" role="status" aria-live="polite">
+        <div class="loading-content"><div class="loading-ring"></div><h2>Preparando seu relatório</h2><p>Estamos organizando os aprendizados desta sessão.</p></div>
+    </div>
+    <script src="report-renderer.js"></script>
+</body>
+</html>

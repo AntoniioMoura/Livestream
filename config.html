@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#171a19">
+    <title>Preparar live</title>
+    <link rel="stylesheet" href="config.css">
+</head>
+<body>
+    <main class="setup-shell">
+        <header class="setup-topbar">
+            <div class="brand"><span class="brand-mark">L</span><span>live<span class="brand-light">room</span></span></div>
+            <span class="local-status"><span></span> SESSÃO LOCAL</span>
+        </header>
+
+        <section class="setup-heading">
+            <p class="eyebrow">ANTES DE ENTRAR AO VIVO <span> / 01</span></p>
+            <h1>Prepare sua sala.</h1>
+            <p class="heading-copy">Defina o contexto e o ritmo do chat desta transmissão.</p>
+        </section>
+
+        <form class="setup-grid" id="setup-form">
+            <section class="settings-panel" aria-label="Configurações da live">
+                <div class="field-block theme-field">
+                    <label for="stream-theme">Tema da live</label>
+                    <input id="stream-theme" name="theme" type="text" maxlength="120" value="Gameplay e conversa com o chat" required>
+                    <span class="field-hint">Jogo, desafio ou assunto principal</span>
+                </div>
+
+                <div class="field-block streamer-name-field">
+                    <label for="streamer-name">Seu nome para o chat</label>
+                    <input id="streamer-name" name="streamerName" type="text" maxlength="40" placeholder="Ex.: Antônio" autocomplete="nickname">
+                    <span class="field-hint">Os bots podem usar esse nome ao falar com você</span>
+                </div>
+
+                <div class="field-block worldbuilding-field">
+                    <label for="worldbuilding-document">Documento do jogo</label>
+                    <select id="worldbuilding-document" name="worldbuildingFile" disabled>
+                        <option value="">Carregando documentos...</option>
+                    </select>
+                    <span class="field-hint" id="worldbuilding-hint">Arquivos .md, .txt e .json da pasta worldbuilding</span>
+                </div>
+
+                <div class="field-row">
+                    <div class="field-block">
+                        <label for="language">Idioma das respostas</label>
+                        <select id="language" name="language">
+                            <option value="en" selected>English</option>
+                            <option value="pt">Português brasileiro</option>
+                        </select>
+                    </div>
+                    <div class="field-block">
+                        <label for="complexity">Complexidade</label>
+                        <select id="complexity" name="complexity">
+                            <option value="simple">Leve · linguagem simples</option>
+                            <option value="normal" selected>Natural · equilibrada</option>
+                            <option value="advanced">Gamer · mais específica</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="field-block response-field">
+                    <label for="responses">Respostas por fala</label>
+                    <select id="responses" name="responses">
+                        <option value="1">1 viewer</option>
+                        <option value="2">2 viewers</option>
+                        <option value="3">3 viewers</option>
+                        <option value="random" selected>Aleatório · 1 a 3</option>
+                    </select>
+                </div>
+
+                <div class="settings-divider"></div>
+
+                <label class="toggle-row" for="silence-chat">
+                    <span class="toggle-copy"><strong>Chat durante pausas</strong><small>Os viewers podem puxar assunto quando você estiver em silêncio.</small></span>
+                    <input id="silence-chat" name="silenceChat" type="checkbox" checked>
+                    <span class="switch" aria-hidden="true"></span>
+                </label>
+
+                <div class="field-block interval-field" id="interval-field">
+                    <div class="range-heading"><label for="silence-interval">Intervalo entre conversas</label><output id="interval-value" for="silence-interval">25 s</output></div>
+                    <input id="silence-interval" name="silenceInterval" type="range" min="10" max="60" step="5" value="25">
+                    <div class="range-scale"><span>10 s</span><span>60 s</span></div>
+                </div>
+
+                <details class="persona-settings">
+                    <summary><span>Personalidade dos bots</span><span class="persona-count">4 perfis</span></summary>
+                    <div class="persona-fields">
+                        <div class="persona-field">
+                            <label for="persona-jake">Jake · Hype gamer</label>
+                            <textarea id="persona-jake" data-persona="Jake" maxlength="180" rows="2">Hypes up good moves, talks about game strategies and their own gaming experiences.</textarea>
+                        </div>
+                        <div class="persona-field">
+                            <label for="persona-lulu">Lulu_Cat · Sweetheart</label>
+                            <textarea id="persona-lulu" data-persona="Lulu_Cat" maxlength="180" rows="2">Sweet and supportive; asks personal questions and sends positive vibes.</textarea>
+                        </div>
+                        <div class="persona-field">
+                            <label for="persona-kevin">kevin_noob · Curioso</label>
+                            <textarea id="persona-kevin" data-persona="kevin_noob" maxlength="180" rows="2">A curious fan who asks genuine questions about the game and the conversation.</textarea>
+                        </div>
+                        <div class="persona-field">
+                            <label for="persona-lord">Lord_meme · Jokester</label>
+                            <textarea id="persona-lord" data-persona="Lord_meme" maxlength="180" rows="2">Playfully teases, makes jokes and uses emotes, while always staying friendly.</textarea>
+                        </div>
+                    </div>
+                </details>
+
+                <div class="form-feedback" id="form-feedback" role="status" aria-live="polite"></div>
+                <div class="form-footer">
+                    <span class="mic-note"><span class="mic-mark">●</span> O microfone só abre ao iniciar</span>
+                    <button class="start-button" id="start-button" type="submit"><span class="play-mark"></span>Iniciar live</button>
+                </div>
+            </section>
+
+            <aside class="preview-panel" aria-label="Prévia das mensagens">
+                <div class="preview-topline"><span>PRÉVIA DO CHAT</span><span class="preview-live"><i></i> LIVE</span></div>
+                <div class="preview-context"><span class="context-mark">↗</span><span id="preview-theme">Gameplay e conversa com o chat</span></div>
+                <div class="preview-messages" id="preview-messages">
+                    <div class="preview-bubble jake-bubble"><strong>Jake</strong><p>That was a clean play, let's go!</p></div>
+                    <div class="preview-bubble lulu-bubble"><strong>Lulu_Cat</strong><p>How long have you been playing this one?</p></div>
+                </div>
+                <div class="preview-footer"><span class="preview-spark">✳</span><span id="preview-complexity">Respostas naturais e equilibradas</span></div>
+            </aside>
+        </form>
+
+        <footer class="setup-footer"><span>LIVE ROOM <span class="footer-muted">/ SETUP</span></span><span>AS MENSAGENS DO STREAMER NÃO APARECEM NO OVERLAY</span></footer>
+    </main>
+    <script src="config-renderer.js"></script>
+</body>
+</html>

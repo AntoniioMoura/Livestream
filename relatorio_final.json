@@ -1,0 +1,22 @@
+{
+  "summary": "A análise personalizada não foi gerada.",
+  "strengths": [
+    "Você concluiu a sessão de prática e pode tentar novamente na próxima live."
+  ],
+  "weaknesses": [
+    "Não houve frases transcritas suficientes para avaliar o inglês."
+  ],
+  "improvements": [
+    "Use frases curtas em inglês e faça uma pausa para o reconhecimento de voz concluir cada trecho."
+  ],
+  "corrections": [],
+  "vocabulary": [],
+  "metrics": {
+    "fluency": 0,
+    "grammar": 0,
+    "vocabulary": 0,
+    "clarity": 0
+  },
+  "hasTranscript": true,
+  "error": "GROQ_API_KEY não está configurada no ambiente do aplicativo."
+}
