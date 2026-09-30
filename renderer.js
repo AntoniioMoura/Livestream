@@ -11,11 +11,12 @@ const botColors = {
     Lord_meme: 'lord'
 };
 
-function addBubble({ nome = 'Sistema', mensagem = '', tipo = 'bot', tipo_mensagem }) {
+// Adicionamos o "traducao" na lista de propriedades desempacotadas
+function addBubble({ nome = 'Sistema', mensagem = '', tipo = 'bot', tipo_mensagem, traducao }) {
+    console.log(`[Tradutor-Log] 3. Front-end recebeu -> Bot: ${nome} | Tradução: ${traducao}`);
     const bubble = document.createElement('li');
     const color = botColors[nome];
     bubble.className = `chat-bubble ${tipo === 'error' ? 'system-bubble' : tipo === 'notice' ? 'notice-bubble' : (color || 'default-bubble')}`;
-
     if (tipo !== 'error') {
         const username = document.createElement('strong');
         username.className = 'bubble-name';
@@ -26,6 +27,15 @@ function addBubble({ nome = 'Sistema', mensagem = '', tipo = 'bot', tipo_mensage
     const text = document.createElement('p');
     text.className = 'bubble-text';
     text.textContent = mensagem;
+
+    // Usamos a propriedade "traducao" diretamente em vez do "event.traducao"
+    if (traducao) {
+        const translationSpan = document.createElement('span');
+        translationSpan.className = 'bubble-translation';
+        translationSpan.textContent = ` - (${traducao})`;
+        text.appendChild(translationSpan);
+    }
+
     bubble.append(text);
     messageList.append(bubble);
 

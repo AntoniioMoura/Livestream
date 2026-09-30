@@ -66,7 +66,8 @@ function normalizeSettings(settings) {
         silenceChat: typeof values.silenceChat === 'boolean' ? values.silenceChat : true,
         silenceInterval: Number.isFinite(interval) ? Math.max(10, Math.min(60, Math.round(interval))) : 25,
         personas,
-        worldbuildingFile
+        worldbuildingFile,
+        useTranslator: typeof values.useTranslator === 'boolean' ? values.useTranslator : false
     };
 }
 

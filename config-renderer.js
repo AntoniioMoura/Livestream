@@ -9,6 +9,7 @@ const languageInput = document.getElementById('language');
 const complexityInput = document.getElementById('complexity');
 const responsesInput = document.getElementById('responses');
 const silenceChatInput = document.getElementById('silence-chat');
+const useTranslatorInput = document.getElementById('use-translator');
 const silenceIntervalInput = document.getElementById('silence-interval');
 const intervalValue = document.getElementById('interval-value');
 const intervalField = document.getElementById('interval-field');
@@ -31,6 +32,7 @@ function collectSettings() {
         complexity: complexityInput.value,
         responseCount: responsesInput.value,
         silenceChat: silenceChatInput.checked,
+        useTranslator: useTranslatorInput.checked,
         silenceInterval: Number(silenceIntervalInput.value),
         personas: Object.fromEntries(personaInputs.map((input) => [input.dataset.persona, input.value.trim()]))
     };
@@ -46,6 +48,7 @@ function applySettings(settings) {
     if (['simple', 'normal', 'advanced'].includes(settings.complexity)) complexityInput.value = settings.complexity;
     if (['1', '2', '3', 'random'].includes(String(settings.responseCount))) responsesInput.value = String(settings.responseCount);
     if (typeof settings.silenceChat === 'boolean') silenceChatInput.checked = settings.silenceChat;
+    if (typeof settings.useTranslator === 'boolean') useTranslatorInput.checked = settings.useTranslator;
     if (Number.isFinite(settings.silenceInterval)) silenceIntervalInput.value = String(settings.silenceInterval);
 
     if (settings.personas && typeof settings.personas === 'object') {

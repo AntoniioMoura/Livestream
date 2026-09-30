@@ -364,3 +364,10 @@ body {
 @media (prefers-reduced-motion: reduce) {
     .chat-bubble { animation: none; }
 }
+
+.bubble-translation {
+    font-size: 0.85em; /* Deixa a fonte menor */
+    color: rgba(255, 255, 255, 0.55); /* Deixa a cor mais apagada e transparente */
+    font-style: italic;
+    font-weight: 400;
+}

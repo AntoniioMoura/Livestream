@@ -82,6 +82,7 @@ def carregar_configuracao():
         "silence_interval": max(10, min(60, intervalo)),
         "personas": personalidades,
         "worldbuilding_file": str(valores.get("worldbuildingFile", "")).strip(),
+        "use_translator": bool(valores.get("useTranslator", False)),
     }
 
 
@@ -195,6 +196,17 @@ def chamar_ia_bot(
         else ""
     )
 
+# LOG ZERO: Verifica se a configuração realmente chegou no Python
+    emitir_log(f"[Tradutor-Log] 0. Configurações -> Tradutor: {configuracao.get('use_translator')} | Idioma: {configuracao['language']}")
+
+    # FORÇANDO O TEMPLATE JSON PARA A IA
+    if configuracao.get("use_translator") and configuracao["language"] == "en":
+        regra_traducao = "15. TRANSLATION (CRITICAL): You MUST translate your message to Brazilian Portuguese and include it in the 'traducao' key."
+        exemplo_json = '{"nome": "Jake", "mensagem": "English text here", "traducao": "Texto em português aqui"}'
+    else:
+        regra_traducao = ""
+        exemplo_json = '{"nome": "Jake", "mensagem": "Text here"}'
+
     system_prompt = f"""
     You are simulating a Twitch chat for a friendly gaming stream. 
     
@@ -202,7 +214,7 @@ def chamar_ia_bot(
      1. LENGTH: Aim for 3-6 words; never exceed {limite_palavras} words.
      2. ONE THOUGHT: Write one brief reaction or one short question. No explanations, backstory, lists, or multi-part questions.
      3. CHAT STYLE: Sound like a real viewer typing quickly; prefer short phrases over polished or complex sentences.
-    4. ANTI-ECHO (CRITICAL): Check all recent bot messages, not only the last chat line. Never repeat the same message, even if other viewers spoke in between.
+     4. ANTI-ECHO (CRITICAL): Check all recent bot messages, not only the last chat line. Never repeat the same message, even if other viewers spoke in between.
      5. DIRECT REPLY: When a streamer message is provided, reply to that exact message first. Do not change the subject.
      6. GREETINGS: If the streamer greets you or the chat, greet them back instead of introducing a game event or story.
      7. CONTINUITY: Read recent chat. If another bot already answered this streamer message, add a different short reaction to the same topic.
@@ -213,6 +225,7 @@ def chamar_ia_bot(
      12. TOPIC: Stay relevant to the streamer's latest message, recent chat, or theme: {configuracao['theme']}.
      13. LANGUAGE (CRITICAL): Write your message EXCLUSIVELY in {idioma}. You are strictly forbidden from mirroring the streamer's language. If they speak Portuguese and your language is English, reply in English.
      14. COMPLEXITY: {complexidade}
+     {regra_traducao}
     {instrucao_visual}
     {restricao}
     
@@ -228,7 +241,8 @@ def chamar_ia_bot(
     Current Event:
     {evento}
     
-    Return ONLY a valid JSON object with the keys "nome" (the Chosen Persona Name) and "mensagem" (the chat message). Do not include formatting blocks or extra text.
+    Return ONLY a valid JSON object matching this EXACT format:
+    {exemplo_json}
     """
     
     # Ajuste fino da requisição do bot caso seja um efeito manada
@@ -273,8 +287,14 @@ def chamar_ia_bot(
         texto_resposta = dados_json["message"]["content"].strip()
         
         resposta_json = json.loads(texto_resposta)
-        return resposta_json.get("nome", "Viewer"), resposta_json.get("mensagem", "...")
-        
+
+        emitir_log(f"\n[Tradutor-Log] 1. JSON bruto retornado pela IA: {resposta_json}") # NOVA LINHA
+        return (
+            resposta_json.get("nome", "Viewer"), 
+            resposta_json.get("mensagem", "..."),
+            resposta_json.get("traducao", None) # Nova chave
+        )  
+          
     except Exception as e:
         emitir_log(f"Erro ao gerar mensagem no Ollama: {e}")
         return None
@@ -500,7 +520,14 @@ def iniciar_live():
                 if resposta is None:
                     break
 
-                nome_bot, mensagem = resposta
+                nome_bot, mensagem, traducao = resposta
+            
+                historico_da_live.append(f"{nome_bot}: {mensagem}")
+                salvar_historico(historico_da_live)
+            
+                # Envia a tradução junto com o evento
+                emitir_evento("message", tipo_mensagem="bot", nome=nome_bot, mensagem=mensagem, traducao=traducao)
+
                 persona_repetida = grupo_visual and nome_bot in bots_da_rodada
                 mensagem_repetida = _mensagem_ja_usada_recentemente(mensagem, historico_da_live)
                 if not persona_repetida and not mensagem_repetida:
