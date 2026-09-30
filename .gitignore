@@ -5,5 +5,8 @@ __pycache__/
 .env.*
 !.env.example
 historico_live.txt
+historico_professor.json
+historico_professor.json.tmp
+historico_professor.jsonl
 relatorio_final.json
 relatorio_final.md

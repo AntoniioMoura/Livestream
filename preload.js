@@ -21,7 +21,6 @@ contextBridge.exposeInMainWorld('learningReport', {
 	},
 	getStylesheet: () => ipcRenderer.invoke('report:styles:get'),
 	saveHtml: (html) => ipcRenderer.invoke('report:html:save', html),
-	saveImage: () => ipcRenderer.invoke('report:image:save'),
 	back: () => ipcRenderer.send('report:back'),
 	quit: () => ipcRenderer.send('report:quit')
 });

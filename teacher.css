@@ -1,0 +1,58 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+:root {
+    color-scheme: dark;
+    font-family: 'DM Sans', sans-serif;
+    color: #f1f3ef;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    --mint: #8de4bd;
+    --muted: #969f98;
+    --line: #ffffff1a;
+}
+
+* { box-sizing: border-box; }
+
+body {
+    min-width: 300px;
+    min-height: 100vh;
+    margin: 0;
+    background: transparent;
+}
+
+.teacher-shell {
+    height: 100vh;
+    display: flex;
+    align-items: flex-end;
+    justify-content: flex-start;
+    padding: 4px;
+}
+
+.teacher-feed {
+    width: 100%;
+    display: flex;
+    align-items: flex-start;
+}
+
+.teacher-bubble {
+    width: fit-content;
+    max-width: 100%;
+    padding: 8px 11px;
+    border: 1px solid #ffffff1c;
+    border-left: 2px solid var(--mint);
+    border-radius: 4px 10px 10px 10px;
+    color: #e5e9e4;
+    background: #141a16e8;
+    box-shadow: 0 5px 18px #0005;
+    backdrop-filter: blur(8px);
+    font-size: 10px;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+}
+
+.teacher-original { margin: 0; color: #abb3ac; }
+.teacher-correction { margin: 3px 0 0; color: #a5edc8; font-size: 12px; font-weight: 600; }
+.teacher-explanation { margin: 3px 0 0; color: #d0d6d0; }
+.teacher-pending { border-left-color: #e8bc6a; color: #e8bc6a; }
+.teacher-error { border-left-color: #ef8278; }
+.teacher-shell.is-movable .teacher-bubble { -webkit-app-region: drag; cursor: grab; }

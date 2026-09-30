@@ -5,27 +5,93 @@ const reportNotice = document.getElementById('report-notice');
 const exportFeedback = document.getElementById('export-feedback');
 
 const metricLabels = {
-    fluency: 'Fluidez textual',
+    fluency: 'Fluidez e organização',
     grammar: 'Gramática',
     vocabulary: 'Vocabulário',
     clarity: 'Clareza'
 };
 
-function appendTextList(containerId, values, emptyText) {
+const confidenceLabels = { low: 'Baixa', medium: 'Média', high: 'Alta' };
+
+function appendReportField(container, label, value) {
+    const values = Array.isArray(value)
+        ? value.filter((item) => typeof item === 'string' && item.trim())
+        : typeof value === 'string' && value.trim() ? [value] : [];
+    if (!values.length) return;
+
+    const field = document.createElement('div');
+    field.className = 'detail-field';
+    const heading = document.createElement('strong');
+    heading.textContent = label;
+    field.append(heading);
+
+    if (Array.isArray(value)) {
+        const list = document.createElement('ul');
+        for (const entry of values) {
+            const item = document.createElement('li');
+            item.textContent = entry;
+            list.append(item);
+        }
+        field.append(list);
+    } else {
+        const text = document.createElement('p');
+        text.textContent = value;
+        field.append(text);
+    }
+    container.append(field);
+}
+
+function appendStructuredItems(containerId, values, kind, emptyText) {
     const container = document.getElementById(containerId);
     container.replaceChildren();
     const items = Array.isArray(values) ? values : [];
     if (!items.length) {
-        const empty = document.createElement('li');
-        empty.className = 'empty-list';
+        const empty = document.createElement('p');
+        empty.className = 'empty-detail';
         empty.textContent = emptyText;
         container.append(empty);
         return;
     }
 
     for (const value of items) {
-        const item = document.createElement('li');
-        item.textContent = value;
+        const entry = typeof value === 'string' ? { pattern: value, focus: value } : value;
+        if (!entry || typeof entry !== 'object') continue;
+
+        const item = document.createElement('article');
+        item.className = `detail-item ${kind}-item`;
+        const heading = document.createElement('div');
+        heading.className = 'detail-item-heading';
+        const title = document.createElement('h3');
+        title.textContent = entry.pattern || entry.focus || entry.original || 'Observação da sessão';
+        heading.append(title);
+
+        if (Number.isFinite(Number(entry.frequency)) && Number(entry.frequency) > 0) {
+            const frequency = document.createElement('span');
+            frequency.className = 'frequency-tag';
+            frequency.textContent = `${entry.frequency} ${Number(entry.frequency) === 1 ? 'ocorrência' : 'ocorrências'}`;
+            heading.append(frequency);
+        }
+
+        if (entry.confidence) {
+            const confidence = document.createElement('span');
+            confidence.className = `confidence-tag confidence-${entry.confidence}`;
+            confidence.textContent = `Confiança ${confidenceLabels[entry.confidence] || 'Baixa'}`;
+            heading.append(confidence);
+        }
+        item.append(heading);
+
+        if (kind === 'improvement' && entry.priority) {
+            const priority = document.createElement('p');
+            priority.className = 'priority-tag';
+            priority.textContent = `Prioridade ${entry.priority}`;
+            item.append(priority);
+        }
+
+        appendReportField(item, kind === 'strength' ? 'Evidência' : 'Exemplos observados', entry.evidence);
+        appendReportField(item, 'Por que importa', entry.why_it_matters || entry.impact || entry.why);
+        appendReportField(item, 'Exercício', entry.exercise);
+        appendReportField(item, 'Exemplo para praticar', entry.example);
+        appendReportField(item, 'Meta', entry.goal);
         container.append(item);
     }
 }
@@ -55,8 +121,10 @@ function appendStudyItems(containerId, items, fields, emptyText) {
         suggestion.textContent = fields.suggestion(entry);
         const explanation = document.createElement('p');
         explanation.className = 'study-explanation';
-        explanation.textContent = fields.explanation(entry);
+        explanation.textContent = fields.explanation(entry) || '';
         item.append(originalLabel, original, suggestion, explanation);
+        appendReportField(item, 'Categoria', entry.category);
+        appendReportField(item, 'Importância', entry.importance);
         container.append(item);
     }
 }
@@ -75,7 +143,8 @@ function renderReport(report) {
     const chart = document.getElementById('metrics-chart');
     chart.replaceChildren();
     for (const [key, label] of Object.entries(metricLabels)) {
-        const score = Math.max(0, Math.min(100, Number(metrics[key]) || 0));
+        const metric = metrics[key] && typeof metrics[key] === 'object' ? metrics[key] : { score: metrics[key] };
+        const score = Math.max(0, Math.min(100, Number(metric.score) || 0));
         const row = document.createElement('div');
         row.className = 'metric-row';
         const name = document.createElement('span');
@@ -83,25 +152,32 @@ function renderReport(report) {
         name.textContent = label;
         const track = document.createElement('span');
         track.className = 'metric-track';
-        track.setAttribute('role', 'meter');
+        track.setAttribute('role', 'img');
         track.setAttribute('aria-label', label);
-        track.setAttribute('aria-valuemin', '0');
-        track.setAttribute('aria-valuemax', '100');
-        track.setAttribute('aria-valuenow', String(score));
-        const fill = document.createElement('span');
-        fill.className = 'metric-fill';
-        fill.style.width = `${score}%`;
-        track.append(fill);
+        const marker = document.createElement('span');
+        marker.className = 'metric-marker';
+        marker.style.left = `${score}%`;
+        track.append(marker);
         const scoreText = document.createElement('span');
         scoreText.className = 'metric-score';
-        scoreText.textContent = String(score).padStart(2, '0');
+        scoreText.textContent = `${score}/100`;
         row.append(name, track, scoreText);
+
+        const support = document.createElement('div');
+        support.className = 'metric-support';
+        const evidence = document.createElement('p');
+        evidence.textContent = metric.evidence || 'Evidência textual insuficiente para esta dimensão.';
+        const confidence = document.createElement('span');
+        confidence.className = `confidence-tag confidence-${metric.confidence || 'low'}`;
+        confidence.textContent = `Confiança ${confidenceLabels[metric.confidence] || 'Baixa'}`;
+        support.append(evidence, confidence);
+        row.append(support);
         chart.append(row);
     }
 
-    appendTextList('strengths-list', report.strengths, 'Sem observações suficientes nesta sessão.');
-    appendTextList('weaknesses-list', report.weaknesses, 'Nenhum ponto de atenção identificado.');
-    appendTextList('improvements-list', report.improvements, 'Continue praticando para gerar próximas sugestões.');
+    appendStructuredItems('strengths-list', report.strengths, 'strength', 'Sem evidências suficientes para identificar pontos fortes nesta sessão.');
+    appendStructuredItems('weaknesses-list', report.weaknesses, 'weakness', 'Nenhum padrão de atenção sustentado pelas falas foi identificado.');
+    appendStructuredItems('improvements-list', report.improvements, 'improvement', 'Não há exercícios específicos para esta sessão.');
     appendStudyItems('corrections-list', report.corrections, {
         originalLabel: 'FRASE REGISTRADA',
         suggestion: (entry) => entry.corrected,
@@ -112,6 +188,20 @@ function renderReport(report) {
         suggestion: (entry) => entry.suggestion,
         explanation: (entry) => entry.reason
     }, 'Sem sugestões de vocabulário para esta sessão.');
+
+    const transcriptionNotes = Array.isArray(report.transcription_notes) ? report.transcription_notes : [];
+    document.getElementById('transcription-notes-section').hidden = !transcriptionNotes.length;
+    appendStructuredItems(
+        'transcription-notes-list',
+        transcriptionNotes.map((note) => ({
+            pattern: note.transcript_text,
+            evidence: note.possible_phrase ? [`Possível frase: ${note.possible_phrase}`] : [],
+            impact: note.reason,
+            goal: note.next_step
+        })),
+        'transcription',
+        ''
+    );
 
     if (!report.hasTranscript || report.error) {
         reportNotice.hidden = false;
@@ -133,18 +223,7 @@ async function exportHtml() {
     }
 }
 
-async function exportImage() {
-    exportFeedback.textContent = 'Capturando a página...';
-    try {
-        const result = await window.learningReport.saveImage();
-        exportFeedback.textContent = result.canceled ? 'Download cancelado.' : 'Imagem PNG salva.';
-    } catch (error) {
-        exportFeedback.textContent = `Falha ao salvar imagem: ${error.message}`;
-    }
-}
-
 document.getElementById('save-html').addEventListener('click', exportHtml);
-document.getElementById('save-image').addEventListener('click', exportImage);
 document.getElementById('back-button').addEventListener('click', () => window.learningReport.back());
 document.getElementById('quit-button').addEventListener('click', () => window.learningReport.quit());
 

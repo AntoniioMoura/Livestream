@@ -4,6 +4,8 @@ import random
 import os
 import sys
 import re
+import threading
+from datetime import datetime
 from pathlib import Path
 import speech_recognition as sr
 import base64
@@ -21,6 +23,18 @@ def emitir_evento(tipo, **dados):
 
 def emitir_log(mensagem):
     print(mensagem, file=sys.stderr, flush=True)
+
+
+def monitorar_comando_parada(evento_parada):
+    for linha in sys.stdin:
+        try:
+            comando = json.loads(linha)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(comando, dict) and comando.get("command") == "stop":
+            evento_parada.set()
+            return
+
 
 def salvar_historico(historico):
     caminho = os.path.join(os.path.dirname(os.path.abspath(__file__)), "historico_live.txt")
@@ -276,6 +290,107 @@ def chamar_ia_bot(
         emitir_log(f"Erro ao gerar mensagem no Ollama: {e}")
         return None
 
+
+def avaliar_fala_professor(fala, configuracao):
+    idioma_alvo = "English" if configuracao["language"] == "en" else "Brazilian Portuguese"
+    prompt_sistema = f"""You are a concise {idioma_alvo} language teacher for a beginner.
+Review the learner's exact spoken sentence and prioritize only important errors in grammar, agreement, or sentence structure that affect correctness or clarity.
+Do not flag harmless repetition, repeated greetings, fillers, informal but natural wording, contractions, or punctuation/capitalization as errors. For example, repeating "hello" in a greeting is acceptable.
+Do not rewrite a correct sentence just to make it sound different. Never invent an error or over-explain a minor preference.
+Return only JSON with these keys: "correcao" and "explicacao".
+Write the explanation in Brazilian Portuguese, directly and simply, with at most two short sentences. Explain the rule only when there is a meaningful correction.
+If there is no important error, keep the original unchanged and say briefly that it is correct.
+Do not comment on pronunciation because this input is speech transcription. Do not invent context."""
+    payload = {
+        "model": "llama3.1",
+        "messages": [
+            {"role": "system", "content": prompt_sistema},
+            {"role": "user", "content": f"Learner's sentence: {json.dumps(fala, ensure_ascii=False)}"},
+        ],
+        "format": "json",
+        "stream": False,
+        "options": {"temperature": 0.2, "num_predict": 120},
+    }
+    resposta = requests.post("http://localhost:11434/api/chat", json=payload, timeout=45)
+    resposta.raise_for_status()
+    dados_json = resposta.json()
+    resultado = json.loads(dados_json["message"]["content"].strip())
+    correcao = resultado.get("correcao")
+    explicacao = resultado.get("explicacao")
+    if not isinstance(correcao, str) or not correcao.strip():
+        raise ValueError("O professor retornou uma correção vazia.")
+    if not isinstance(explicacao, str) or not explicacao.strip():
+        raise ValueError("O professor retornou uma explicação vazia.")
+    return {"correcao": correcao.strip()[:500], "explicacao": explicacao.strip()[:700]}
+
+
+def caminho_historico_professor():
+    return Path(__file__).resolve().parent / "historico_professor.json"
+
+
+def _carregar_sessoes_professor():
+    caminho = caminho_historico_professor()
+    if caminho.exists():
+        try:
+            sessoes = json.loads(caminho.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as e:
+            raise RuntimeError("O histórico do professor não pôde ser lido; ele foi preservado.") from e
+        if not isinstance(sessoes, list):
+            raise RuntimeError("O histórico do professor não contém um array de sessões.")
+        return sessoes
+
+    caminho_legado = caminho.with_name("historico_professor.jsonl")
+    registros_legados = []
+    if caminho_legado.exists():
+        with caminho_legado.open("r", encoding="utf-8") as arquivo:
+            for linha in arquivo:
+                try:
+                    registro = json.loads(linha)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(registro, dict):
+                    registros_legados.append(registro)
+
+    if registros_legados:
+        return [{
+            "id": "sessao-legada",
+            "started_at": "",
+            "interactions": registros_legados,
+        }]
+    return []
+
+
+def _gravar_sessoes_professor(sessoes):
+    caminho = caminho_historico_professor()
+    temporario = caminho.with_name(caminho.name + ".tmp")
+    temporario.write_text(
+        json.dumps(sessoes, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    temporario.replace(caminho)
+
+
+def iniciar_sessao_historico_professor():
+    sessoes = _carregar_sessoes_professor()
+    identificador = str(time.time_ns())
+    sessoes.append({
+        "id": identificador,
+        "started_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "interactions": [],
+    })
+    _gravar_sessoes_professor(sessoes)
+    return identificador
+
+
+def salvar_historico_professor(identificador_sessao, registro):
+    sessoes = _carregar_sessoes_professor()
+    sessao = next((item for item in reversed(sessoes) if item.get("id") == identificador_sessao), None)
+    if sessao is None:
+        raise RuntimeError("A sessão atual não foi encontrada no histórico do professor.")
+    sessao.setdefault("interactions", []).append(registro)
+    _gravar_sessoes_professor(sessoes)
+
+
 def carregar_documento_worldbuilding(nome_arquivo):
     if not nome_arquivo:
         return ""
@@ -303,6 +418,12 @@ def selecionar_contexto_worldbuilding(documento, limite=MAX_WORLDBUILDING_PROMPT
 
 def iniciar_live():
     configuracao = carregar_configuracao()
+    evento_parada = threading.Event()
+    threading.Thread(
+        target=monitorar_comando_parada,
+        args=(evento_parada,),
+        daemon=True,
+    ).start()
     documento_worldbuilding = carregar_documento_worldbuilding(configuracao["worldbuilding_file"])
     nome_jogo_worldbuilding = Path(configuracao["worldbuilding_file"]).stem
     
@@ -321,6 +442,8 @@ def iniciar_live():
     recognizer.pause_threshold = 1.5
     microphone = sr.Microphone()
     historico_da_live = []
+    identificador_sessao_professor = iniciar_sessao_historico_professor()
+    executor_professor = ThreadPoolExecutor(max_workers=1)
     
     # 1. Cooldown Global (Fila que lembra os últimos bots)
     fila_de_cooldown_bots = []
@@ -339,6 +462,8 @@ def iniciar_live():
         bots_da_rodada = []
 
         for indice in range(quantidade):
+            if evento_parada.is_set():
+                break
             if indice > 0:
                 time.sleep(random.uniform(0.5, 1.5))
             
@@ -394,6 +519,32 @@ def iniciar_live():
             fila_de_cooldown_bots.append(nome_bot)
             if len(fila_de_cooldown_bots) > 2:
                 fila_de_cooldown_bots.pop(0)
+
+    def solicitar_feedback_professor(fala):
+        identificador = str(time.time_ns())
+        emitir_evento("teacher_pending", id=identificador, original=fala)
+        tarefa = executor_professor.submit(avaliar_fala_professor, fala, configuracao)
+
+        def publicar_feedback(resultado):
+            try:
+                feedback = resultado.result()
+                registro = {
+                    "id": identificador,
+                    "original": fala,
+                    **feedback,
+                }
+                salvar_historico_professor(identificador_sessao_professor, registro)
+                emitir_evento("teacher_feedback", **registro)
+            except Exception as erro:
+                emitir_log(f"Professor de idioma não conseguiu avaliar a fala: {erro}")
+                emitir_evento(
+                    "teacher_error",
+                    id=identificador,
+                    original=fala,
+                    mensagem="Não foi possível analisar esta frase agora.",
+                )
+
+        tarefa.add_done_callback(publicar_feedback)
 
     def agendar_analise_visual(fala=None, aguardar_resposta=False):
         nonlocal futuro_analise_visual, fala_visual_pendente, resposta_ociosa_pendente
@@ -457,7 +608,7 @@ def iniciar_live():
             ultimo_momento_interacao = time.time()
             proximo_intervalo_silencio = calcular_intervalo_silencio(configuracao)
 
-            while True:
+            while not evento_parada.is_set():
                 concluir_analise_visual()
 
                 try:
@@ -483,6 +634,7 @@ def iniciar_live():
                     resposta_ociosa_pendente = False
                     historico_da_live.append(f"Streamer: {fala_usuario}")
                     salvar_historico(historico_da_live)
+                    solicitar_feedback_professor(fala_usuario)
                     
                     emitir_evento("message", tipo_mensagem="streamer", nome="Você", mensagem=fala_usuario)
                     
@@ -521,6 +673,7 @@ def iniciar_live():
         emitir_evento("error", mensagem=f"Erro fatal: {str(e)}")
     finally:
         executor_visual.shutdown(wait=False, cancel_futures=True)
+        executor_professor.shutdown(wait=True, cancel_futures=False)
 
 
 def _resposta_visual_valida(texto):
@@ -628,15 +781,15 @@ def capturar_e_analisar_tela(
         contexto_worldbuilding = selecionar_contexto_worldbuilding(documento_worldbuilding)
         
         prompt_visao = f"""[GAME KNOWLEDGE BASE]
-Game: {nome_jogo_worldbuilding or 'Unspecified'}
-Live Theme: {tema_live.strip() if tema_live else 'Unspecified'}
-Context: {contexto_worldbuilding if contexto_worldbuilding else 'None'}
+        Game: {nome_jogo_worldbuilding or 'Unspecified'}
+        Live Theme: {tema_live.strip() if tema_live else 'Unspecified'}
+        Context: {contexto_worldbuilding if contexto_worldbuilding else 'None'}
 
-Based on the [GAME KNOWLEDGE BASE] above, describe what is CURRENTLY happening in this image in 2 to 4 concise sentences.
-Focus strictly on immediate action, visible enemies, player character, and health/HUD state.
-CRITICAL RULE 1: Only name locations, enemies, or items from the knowledge base if they visually match the image. Do not invent details.
-CRITICAL RULE 2: If you see objects, items, or creatures that are blurry, ambiguous, or unrecognizable, DO NOT guess what they are. Instead, explicitly describe them as "unidentified objects", "strange shapes", or "unknown items". Let them be a mystery!
-Return ONLY the description."""
+        Based on the [GAME KNOWLEDGE BASE] above, describe what is CURRENTLY happening in this image in 2 to 4 concise sentences.
+        Focus strictly on immediate action, visible enemies, player character, and health/HUD state.
+        CRITICAL RULE 1: Only name locations, enemies, or items from the knowledge base if they visually match the image. Do not invent details.
+        CRITICAL RULE 2: If you see objects, items, or creatures that are blurry, ambiguous, or unrecognizable, DO NOT guess what they are (e.g., do not call a green plant a 'defeated monster'). Instead, explicitly describe them as "unidentified objects", "strange shapes", or "unknown items". Let them be a mystery!
+        Return ONLY the description."""
 
         if fala_do_streamer and fala_do_streamer.strip():
             assunto_visual = _extrair_assunto_visual(fala_do_streamer)

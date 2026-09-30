@@ -14,7 +14,6 @@
         </a>
         <div class="toolbar-actions">
             <button class="toolbar-button" id="save-html" type="button">Baixar HTML</button>
-            <button class="toolbar-button" id="save-image" type="button">Baixar imagem PNG</button>
         </div>
     </header>
 
@@ -31,15 +30,15 @@
 
         <section class="metrics-section" aria-labelledby="metrics-title">
             <div class="section-heading">
-                <div><p class="section-index">01 <span>/ PROGRESSO</span></p><h2 id="metrics-title">Leitura da sessão</h2></div>
-                <p class="metrics-note">Estimativas didáticas baseadas no texto transcrito, não medem pronúncia.</p>
+                <div><p class="section-index">01 <span>/ PERFIL DA SESSÃO</span></p><h2 id="metrics-title">O que sua fala mostra</h2></div>
+                <p class="metrics-note">Indicadores didáticos do texto transcrito. Cada dimensão inclui evidências e nível de confiança; não avaliam pronúncia.</p>
             </div>
             <div class="metrics-layout">
                 <div class="metrics-chart" id="metrics-chart" aria-label="Gráfico de indicadores de inglês"></div>
                 <aside class="chart-aside">
-                    <span class="chart-aside-mark">✳</span>
-                    <p>Use estes indicadores para escolher o que praticar na próxima live. Eles não são uma nota oficial de proficiência.</p>
-                    <span class="chart-legend"><i></i> INDICADOR DA SESSÃO <b>0–100</b></span>
+                    <span class="chart-aside-mark">↗</span>
+                    <p>O marcador mostra a estimativa desta sessão, não uma nota oficial. Leia junto com as evidências e a confiança de cada dimensão.</p>
+                    <span class="chart-legend"><i></i> FOCO AGORA <b>0</b><b>25</b><b>50</b><b>75</b><b>100</b></span>
                 </aside>
             </div>
         </section>
@@ -78,6 +77,14 @@
                     <div class="study-list" id="vocabulary-list"></div>
                 </article>
             </div>
+        </section>
+
+        <section class="transcription-section" id="transcription-notes-section" aria-label="Possíveis falhas de transcrição" hidden>
+            <div class="section-heading">
+                <div><p class="section-index">05 <span>/ REVISÃO DO WHISPER</span></p><h2>Trechos que podem ter sido transcritos errado</h2></div>
+                <p class="metrics-note">São hipóteses para conferir, não erros de gramática ou pronúncia.</p>
+            </div>
+            <div class="transcription-list" id="transcription-notes-list"></div>
         </section>
 
         <section class="report-notice" id="report-notice" hidden role="status"></section>

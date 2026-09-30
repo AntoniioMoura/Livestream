@@ -5,8 +5,11 @@ const path = require('path');
 
 let configWindow;
 let overlayWindow;
+let teacherWindow;
+let teacherMoveMode = false;
 let reportWindow;
 let liveProcess;
+let liveStopTimer;
 let reportProcess;
 let mousePassthrough = true;
 let overlayRefreshTimer;
@@ -15,6 +18,7 @@ let reportAfterLive = false;
 let latestReport;
 let reportPageLoaded = false;
 let appIsQuitting = false;
+let quitWhenLiveStops = false;
 const personaNames = ['Jake', 'Lulu_Cat', 'kevin_noob', 'Lord_meme'];
 const worldbuildingExtensions = new Set(['.md', '.markdown', '.txt', '.json']);
 
@@ -83,7 +87,7 @@ function saveSettings(settings) {
 }
 
 function sendEvent(event) {
-    for (const window of [configWindow, overlayWindow]) {
+    for (const window of [configWindow, overlayWindow, teacherWindow]) {
         if (window && !window.isDestroyed()) {
             window.webContents.send('live:event', event);
         }
@@ -219,6 +223,7 @@ function createOverlayWindow(settings) {
     overlayWindow.setAlwaysOnTop(true, 'screen-saver');
     overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     overlayWindow.loadFile('index.html');
+    createTeacherWindow(workArea);
     overlayWindow.once('ready-to-show', () => {
         overlayWindow.show();
         overlayWindow.setIgnoreMouseEvents(mousePassthrough, { forward: true });
@@ -226,10 +231,49 @@ function createOverlayWindow(settings) {
     });
     overlayWindow.on('closed', () => {
         overlayWindow = null;
+        if (teacherWindow && !teacherWindow.isDestroyed()) teacherWindow.close();
         clearInterval(overlayRefreshTimer);
         overlayRefreshTimer = null;
         if (liveProcess) stopSimulator();
         if (!appIsQuitting && !reportWindow && configWindow && !configWindow.isDestroyed()) configWindow.show();
+    });
+}
+
+function createTeacherWindow(workArea) {
+    teacherWindow = new BrowserWindow({
+        x: workArea.x + 24,
+        y: workArea.y + 70,
+        width: 340,
+        height: 170,
+        minWidth: 280,
+        minHeight: 130,
+        maxWidth: 420,
+        maxHeight: 260,
+        transparent: true,
+        frame: false,
+        hasShadow: false,
+        alwaysOnTop: true,
+        backgroundColor: '#00000000',
+        autoHideMenuBar: true,
+        show: false,
+        webPreferences: {
+            preload: path.join(__dirname, 'preload.js'),
+            contextIsolation: true,
+            nodeIntegration: false,
+            backgroundThrottling: false
+        }
+    });
+
+    teacherWindow.setAlwaysOnTop(true, 'screen-saver');
+    teacherWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    teacherWindow.loadFile('teacher.html');
+    teacherWindow.once('ready-to-show', () => {
+        teacherWindow.show();
+        teacherWindow.setIgnoreMouseEvents(!teacherMoveMode, { forward: true });
+    });
+    teacherWindow.on('closed', () => {
+        teacherWindow = null;
+        teacherMoveMode = false;
     });
 }
 
@@ -266,13 +310,18 @@ function startSimulator(settings) {
     });
 
     liveProcess.on('error', (error) => {
+        clearTimeout(liveStopTimer);
+        liveStopTimer = null;
         sendEvent({ tipo: 'error', mensagem: `Não foi possível iniciar o Python: ${error.message}` });
         liveProcess = null;
     });
 
     liveProcess.on('close', (code) => {
         const shouldGenerateReport = reportAfterLive;
+        const shouldQuit = quitWhenLiveStops;
         reportAfterLive = false;
+        clearTimeout(liveStopTimer);
+        liveStopTimer = null;
         if (output.trim()) {
             try {
                 sendEvent(JSON.parse(output));
@@ -287,8 +336,13 @@ function startSimulator(settings) {
         sendEvent({ tipo: 'status', status: 'idle', mensagem: 'Simulador desconectado' });
         clearInterval(overlayRefreshTimer);
         overlayRefreshTimer = null;
-        if (shouldGenerateReport) startReportGeneration();
+        if (shouldGenerateReport && !shouldQuit) startReportGeneration();
         if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.close();
+        if (shouldQuit) {
+            quitWhenLiveStops = false;
+            app.quit();
+            return;
+        }
         if (!shouldGenerateReport && configWindow && !configWindow.isDestroyed()) configWindow.show();
     });
 
@@ -307,10 +361,24 @@ function startLive(settings) {
 }
 
 function stopSimulator(generateReport = false) {
-    if (liveProcess) {
-        reportAfterLive = generateReport;
-        liveProcess.kill(); // Força o encerramento imediato e limpo do processo
-        sendEvent({ tipo: 'status', status: 'stopping', mensagem: 'Encerrando a live...' });
+    if (!liveProcess) return;
+
+    reportAfterLive = reportAfterLive || generateReport;
+    sendEvent({ tipo: 'status', status: 'stopping', mensagem: 'Encerrando a live...' });
+
+    try {
+        liveProcess.stdin.write(`${JSON.stringify({ command: 'stop' })}\n`);
+    } catch (error) {
+        console.error('[live_simulator] Could not request graceful stop:', error);
+        liveProcess.kill();
+    }
+
+    if (!liveStopTimer) {
+        liveStopTimer = setTimeout(() => {
+            if (!liveProcess) return;
+            console.error('[live_simulator] Graceful shutdown timed out; terminating Python.');
+            liveProcess.kill();
+        }, 90000);
     }
 }
 
@@ -330,18 +398,6 @@ ipcMain.handle('report:html:save', async (_event, html) => {
     });
     if (result.canceled || !result.filePath) return { canceled: true };
     fs.writeFileSync(result.filePath, html, 'utf8');
-    return { canceled: false, filePath: result.filePath };
-});
-ipcMain.handle('report:image:save', async () => {
-    if (!reportWindow || reportWindow.isDestroyed()) throw new Error('A janela do relatório não está aberta.');
-    const result = await dialog.showSaveDialog(reportWindow, {
-        title: 'Salvar imagem do relatório',
-        defaultPath: 'relatorio-de-ingles.png',
-        filters: [{ name: 'Imagem PNG', extensions: ['png'] }]
-    });
-    if (result.canceled || !result.filePath) return { canceled: true };
-    const image = await reportWindow.webContents.capturePage();
-    fs.writeFileSync(result.filePath, image.toPNG());
     return { canceled: false, filePath: result.filePath };
 });
 ipcMain.on('report:back', () => {
@@ -382,12 +438,27 @@ app.whenReady().then(() => {
         overlayWindow.setIgnoreMouseEvents(mousePassthrough, { forward: true });
         sendEvent({ tipo: 'interaction', enabled: !mousePassthrough });
     });
+    globalShortcut.register('CommandOrControl+Shift+F12', () => {
+        if (!teacherWindow || teacherWindow.isDestroyed()) return;
+        teacherMoveMode = !teacherMoveMode;
+        teacherWindow.setIgnoreMouseEvents(!teacherMoveMode, { forward: true });
+        sendEvent({ tipo: 'teacher_move_mode', enabled: teacherMoveMode });
+        console.log(`[teacher-overlay] move mode ${teacherMoveMode ? 'enabled' : 'disabled'}`);
+    });
 });
 
-app.on('before-quit', () => {
-    appIsQuitting = true;
+app.on('before-quit', (event) => {
     clearInterval(overlayRefreshTimer);
-    if (liveProcess) liveProcess.kill();
+    if (liveProcess && !quitWhenLiveStops) {
+        event.preventDefault();
+        appIsQuitting = true;
+        quitWhenLiveStops = true;
+        reportAfterLive = false;
+        stopSimulator();
+        return;
+    }
+
+    appIsQuitting = true;
     if (reportProcess) reportProcess.kill();
 });
 
