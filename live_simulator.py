@@ -25,17 +25,6 @@ def emitir_log(mensagem):
     print(mensagem, file=sys.stderr, flush=True)
 
 
-def monitorar_comando_parada(evento_parada):
-    for linha in sys.stdin:
-        try:
-            comando = json.loads(linha)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(comando, dict) and comando.get("command") == "stop":
-            evento_parada.set()
-            return
-
-
 def salvar_historico(historico):
     caminho = os.path.join(os.path.dirname(os.path.abspath(__file__)), "historico_live.txt")
     with open(caminho, "w", encoding="utf-8") as arquivo:
@@ -222,7 +211,7 @@ def chamar_ia_bot(
      10. DIRECT ADDRESS: If the streamer mentions a persona by name, that persona must reply.
      11. EMOTES: Occasionally use one fitting Twitch emote or emoji.
      12. TOPIC: Stay relevant to the streamer's latest message, recent chat, or theme: {configuracao['theme']}.
-     13. LANGUAGE: Write every message in {idioma}.
+     13. LANGUAGE (CRITICAL): Write your message EXCLUSIVELY in {idioma}. You are strictly forbidden from mirroring the streamer's language. If they speak Portuguese and your language is English, reply in English.
      14. COMPLEXITY: {complexidade}
     {instrucao_visual}
     {restricao}
@@ -292,15 +281,20 @@ def chamar_ia_bot(
 
 
 def avaliar_fala_professor(fala, configuracao):
+    emitir_log(f"\n[Professor-Log] 1. Iniciando análise para: '{fala}'")
     idioma_alvo = "English" if configuracao["language"] == "en" else "Brazilian Portuguese"
-    prompt_sistema = f"""You are a concise {idioma_alvo} language teacher for a beginner.
-Review the learner's exact spoken sentence and prioritize only important errors in grammar, agreement, or sentence structure that affect correctness or clarity.
-Do not flag harmless repetition, repeated greetings, fillers, informal but natural wording, contractions, or punctuation/capitalization as errors. For example, repeating "hello" in a greeting is acceptable.
-Do not rewrite a correct sentence just to make it sound different. Never invent an error or over-explain a minor preference.
-Return only JSON with these keys: "correcao" and "explicacao".
-Write the explanation in Brazilian Portuguese, directly and simply, with at most two short sentences. Explain the rule only when there is a meaningful correction.
-If there is no important error, keep the original unchanged and say briefly that it is correct.
-Do not comment on pronunciation because this input is speech transcription. Do not invent context."""
+    
+    prompt_sistema = f"""You are a strict but practical {idioma_alvo} language teacher.
+Review the learner's speech transcription. 
+CRITICAL RULES:
+1. ONLY correct important grammatical errors (e.g., missing prepositions, wrong verb tense).
+2. IGNORE punctuation, capitalization, and comma placement completely.
+3. IGNORE casual speech style (e.g., abbreviations like "what's", filler words).
+4. EXPLANATION MUST BE EXTREMELY SHORT AND DIRECT: Maximum 1 short sentence. No complex grammar jargon. (e.g., "Use 'at' para focar em algo." or "'Was' não combina com substantivos aqui.")
+If no significant error exists, you MUST return empty strings for "correcao" and "explicacao".
+Return ONLY valid JSON with keys "correcao" and "explicacao".
+Explain in Brazilian Portuguese."""
+
     payload = {
         "model": "llama3.1",
         "messages": [
@@ -309,19 +303,39 @@ Do not comment on pronunciation because this input is speech transcription. Do n
         ],
         "format": "json",
         "stream": False,
-        "options": {"temperature": 0.2, "num_predict": 120},
+        # Aumentamos para 300 para garantir que o JSON nunca seja cortado no meio
+        "options": {"temperature": 0.1, "num_predict": 300},
     }
-    resposta = requests.post("http://localhost:11434/api/chat", json=payload, timeout=45)
-    resposta.raise_for_status()
-    dados_json = resposta.json()
-    resultado = json.loads(dados_json["message"]["content"].strip())
-    correcao = resultado.get("correcao")
-    explicacao = resultado.get("explicacao")
-    if not isinstance(correcao, str) or not correcao.strip():
-        raise ValueError("O professor retornou uma correção vazia.")
-    if not isinstance(explicacao, str) or not explicacao.strip():
-        raise ValueError("O professor retornou uma explicação vazia.")
-    return {"correcao": correcao.strip()[:500], "explicacao": explicacao.strip()[:700]}
+    
+    try:
+        emitir_log("[Professor-Log] 2. Aguardando resposta do Ollama...")
+        resposta = requests.post("http://localhost:11434/api/chat", json=payload, timeout=45)
+        resposta.raise_for_status()
+        dados_json = resposta.json()
+        resposta_bruta = dados_json["message"]["content"].strip()
+        emitir_log(f"[Professor-Log] 3. Retorno bruto: {resposta_bruta}")
+        
+        resultado = json.loads(resposta_bruta)
+    except Exception as e:
+        emitir_log(f"[Professor-Log] ❌ Erro ao consultar a IA: {e}")
+        return {"status": "erro"}
+
+    correcao = resultado.get("correcao", "")
+    explicacao = resultado.get("explicacao", "")
+    
+    if not isinstance(correcao, str) or not correcao.strip() or not explicacao.strip():
+        emitir_log("[Professor-Log] 4. Sem erro gramatical. Ignorando.")
+        return {"status": "ignorar"}
+        
+    fala_limpa = re.sub(r'[^\w\s]', '', fala.casefold()).strip()
+    correcao_limpa = re.sub(r'[^\w\s]', '', correcao.casefold()).strip()
+    
+    if fala_limpa == correcao_limpa:
+        emitir_log("[Professor-Log] 4. Mudança apenas de pontuação. Ignorando.")
+        return {"status": "ignorar"}
+        
+    emitir_log("[Professor-Log] 4. Correção validada!")
+    return {"status": "corrigir", "correcao": correcao.strip()[:500], "explicacao": explicacao.strip()[:700]}
 
 
 def caminho_historico_professor():
@@ -420,7 +434,6 @@ def iniciar_live():
     configuracao = carregar_configuracao()
     evento_parada = threading.Event()
     threading.Thread(
-        target=monitorar_comando_parada,
         args=(evento_parada,),
         daemon=True,
     ).start()
@@ -522,27 +535,39 @@ def iniciar_live():
 
     def solicitar_feedback_professor(fala):
         identificador = str(time.time_ns())
+        
+        # O "Analisando..." aparece na tela
         emitir_evento("teacher_pending", id=identificador, original=fala)
+        
         tarefa = executor_professor.submit(avaliar_fala_professor, fala, configuracao)
 
         def publicar_feedback(resultado):
             try:
                 feedback = resultado.result()
+                emitir_log(f"[Professor-Log] 5. Callback recebido com status: {feedback.get('status')}")
+                
+                if feedback.get("status") == "ignorar":
+                    # Manda o Front-end apagar a bolha de "Analisando..." pois não há erro
+                    emitir_evento("teacher_dismiss", id=identificador)
+                    return
+                    
+                if feedback.get("status") == "erro":
+                    emitir_evento("teacher_error", id=identificador, original=fala, mensagem="Falha na análise.")
+                    return
+
+                # Se chegou aqui, temos uma correção útil para exibir
                 registro = {
                     "id": identificador,
                     "original": fala,
-                    **feedback,
+                    "correcao": feedback["correcao"],
+                    "explicacao": feedback["explicacao"]
                 }
                 salvar_historico_professor(identificador_sessao_professor, registro)
                 emitir_evento("teacher_feedback", **registro)
+                
             except Exception as erro:
-                emitir_log(f"Professor de idioma não conseguiu avaliar a fala: {erro}")
-                emitir_evento(
-                    "teacher_error",
-                    id=identificador,
-                    original=fala,
-                    mensagem="Não foi possível analisar esta frase agora.",
-                )
+                emitir_log(f"[Professor-Log] ❌ Erro fatal no callback: {erro}")
+                emitir_evento("teacher_error", id=identificador, original=fala, mensagem="Erro interno.")
 
         tarefa.add_done_callback(publicar_feedback)
 
@@ -608,7 +633,7 @@ def iniciar_live():
             ultimo_momento_interacao = time.time()
             proximo_intervalo_silencio = calcular_intervalo_silencio(configuracao)
 
-            while not evento_parada.is_set():
+            while True:
                 concluir_analise_visual()
 
                 try:

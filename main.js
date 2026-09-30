@@ -366,20 +366,9 @@ function stopSimulator(generateReport = false) {
     reportAfterLive = reportAfterLive || generateReport;
     sendEvent({ tipo: 'status', status: 'stopping', mensagem: 'Encerrando a live...' });
 
-    try {
-        liveProcess.stdin.write(`${JSON.stringify({ command: 'stop' })}\n`);
-    } catch (error) {
-        console.error('[live_simulator] Could not request graceful stop:', error);
-        liveProcess.kill();
-    }
-
-    if (!liveStopTimer) {
-        liveStopTimer = setTimeout(() => {
-            if (!liveProcess) return;
-            console.error('[live_simulator] Graceful shutdown timed out; terminating Python.');
-            liveProcess.kill();
-        }, 90000);
-    }
+    // Encerra o processo imediatamente. Como o Python já salvou os arquivos no disco,
+    // o evento 'close' será disparado na sequência e o relatório será aberto normalmente.
+    liveProcess.kill();
 }
 
 ipcMain.handle('live:settings:get', () => loadSettings());
