@@ -107,6 +107,19 @@ def _normalizar_mensagem_chat(mensagem):
     return " ".join(texto.split())
 
 
+def _fala_aciona_analise_visual(fala):
+    texto = " ".join(fala.casefold().split())
+    padroes = (
+        r"\b(?:look|watch)\b",
+        r"\b(?:look|check)\s+(?:at\s+)?(?:this|that|here)\b",
+        r"\b(?:can|could|do)\s+you\s+see\b",
+        r"\b(?:what(?:'s|\s+is)|who(?:'s|\s+is))\s+(?:this|that|it)\b",
+        r"\b(?:olha|veja|repara)\b",
+        r"\b(?:o que é|quem é)\s+(?:isso|aquilo|esse|essa)\b",
+    )
+    return any(re.search(padrao, texto) for padrao in padroes)
+
+
 def _mensagem_ja_usada_recentemente(mensagem, historico_da_live):
     mensagem_normalizada = _normalizar_mensagem_chat(mensagem)
     if not mensagem_normalizada:
@@ -248,8 +261,10 @@ def chamar_ia_bot(
             }
         }
 
+        inicio_geracao = time.perf_counter()
         resposta = requests.post("http://localhost:11434/api/chat", json=payload, timeout=20)
         resposta.raise_for_status()
+        emitir_log(f"Ollama (chat) respondeu em {time.perf_counter() - inicio_geracao:.2f}s.")
         
         dados_json = resposta.json()
         texto_resposta = dados_json["message"]["content"].strip()
@@ -446,12 +461,15 @@ def iniciar_live():
                 concluir_analise_visual()
 
                 try:
+                    inicio_escuta = time.perf_counter()
                     audio = recognizer.listen(source, timeout=2, phrase_time_limit=15)
-                    
+                    emitir_log(f"Áudio capturado em {time.perf_counter() - inicio_escuta:.2f}s.")
                     emitir_log("Transcrevendo com Whisper...")
                     
                     idioma_whisper = "portuguese" if configuracao["language"] == "pt" else "english"
+                    inicio_transcricao = time.perf_counter()
                     fala_usuario = recognizer.recognize_whisper(audio, language=idioma_whisper).strip()
+                    emitir_log(f"Whisper concluiu em {time.perf_counter() - inicio_transcricao:.2f}s.")
                     
                 except sr.WaitTimeoutError:
                     fala_usuario = None
@@ -469,8 +487,7 @@ def iniciar_live():
                     emitir_evento("message", tipo_mensagem="streamer", nome="Você", mensagem=fala_usuario)
                     
                     # GATILHO VISUAL POR VOZ
-                    palavras_gatilho = ["look", "see", "watch", "chat", "this", "olha", "veja"]
-                    if any(palavra in fala_usuario.lower() for palavra in palavras_gatilho):
+                    if _fala_aciona_analise_visual(fala_usuario):
                         if not agendar_analise_visual(fala_usuario, aguardar_resposta=True):
                             emitir_respostas(fala_usuario)
                     else:
@@ -573,23 +590,40 @@ def capturar_e_analisar_tela(
     documento_worldbuilding=None,
     nome_jogo_worldbuilding=None,
 ):
+    inicio_analise = time.perf_counter()
+    inicio_requisicao = None
     try:
         emitir_log("Diretor de Visão: Iniciando captura da tela (Local)...")
-        
+
+        inicio_captura = time.perf_counter()
         with mss.MSS() as sct:
             monitor = sct.monitors[1]  
             sct_img = sct.grab(monitor)
-            print_tela = Image.frombytes("RGB", sct_img.size, sct_img.bgra, "raw", "BGRX")
-            
+        emitir_log(
+            f"Diretor de Visão: captura do monitor {sct_img.width}x{sct_img.height} "
+            f"em {time.perf_counter() - inicio_captura:.2f}s."
+        )
+
+        inicio_processamento = time.perf_counter()
+        print_tela = Image.frombytes("RGB", sct_img.size, sct_img.bgra, "raw", "BGRX")
         print_tela.thumbnail((768, 768))
-        emitir_log(f"Diretor de Visão: resolução enviada: {print_tela.width}x{print_tela.height}")
-        
+        emitir_log(
+            f"Diretor de Visão: conversão/redimensionamento para "
+            f"{print_tela.width}x{print_tela.height} em "
+            f"{time.perf_counter() - inicio_processamento:.2f}s."
+        )
+
+        inicio_compactacao = time.perf_counter()
         buffer = io.BytesIO()
         print_tela.save(buffer, format="JPEG", quality=95)
         imagem_bytes = buffer.getvalue()
         imagem_base64 = base64.b64encode(imagem_bytes).decode('utf-8')
-        
-        emitir_log(f"Diretor de Visão: Enviando imagem para o Ollama ({MODELO_VISAO})...")
+        emitir_log(
+            f"Diretor de Visão: JPEG/base64 preparado em "
+            f"{time.perf_counter() - inicio_compactacao:.2f}s "
+            f"({len(imagem_bytes) / 1024:.1f} KiB JPEG; "
+            f"{len(imagem_base64) / 1024:.1f} KiB base64)."
+        )
 
         contexto_worldbuilding = selecionar_contexto_worldbuilding(documento_worldbuilding)
         
@@ -620,12 +654,23 @@ Return ONLY the description."""
             }
         }
 
+        emitir_log(f"Diretor de Visão: enviando imagem ao Ollama ({MODELO_VISAO}).")
+        inicio_requisicao = time.perf_counter()
         resposta = requests.post("http://localhost:11434/api/generate", json=payload, timeout=60)
         resposta.raise_for_status()
+        emitir_log(
+            f"Diretor de Visão: Ollama respondeu em "
+            f"{time.perf_counter() - inicio_requisicao:.2f}s."
+        )
+
+        inicio_leitura = time.perf_counter()
         dados_ollama = resposta.json()
         resposta_bruta = str(dados_ollama.get("response", "")).strip()
-        
         texto_resposta = _limpar_resposta_visual(resposta_bruta)
+        emitir_log(
+            f"Diretor de Visão: leitura e validação da resposta em "
+            f"{time.perf_counter() - inicio_leitura:.2f}s."
+        )
 
         if _resposta_visual_valida(texto_resposta):
             descricao = texto_resposta
@@ -633,13 +678,22 @@ Return ONLY the description."""
             emitir_log(f"Diretor de Visão: Resposta inválida. Retorno bruto: {resposta_bruta[:240]!r}")
             return None
         
-        emitir_log(f"Diretor de Visão Finalizou (Zero Custo)! Descrição: {descricao}")
+        emitir_log(
+            f"Diretor de Visão finalizou em {time.perf_counter() - inicio_analise:.2f}s. "
+            f"Descrição: {descricao}"
+        )
         return descricao
         
     except requests.exceptions.RequestException as e:
+        if inicio_requisicao is not None:
+            emitir_log(
+                f"Diretor de Visão: requisição falhou após "
+                f"{time.perf_counter() - inicio_requisicao:.2f}s."
+            )
         emitir_log(f"Erro de conexão com o Ollama local: {e}")
         return None
     except Exception as e:
+        emitir_log(f"Diretor de Visão: falha após {time.perf_counter() - inicio_analise:.2f}s.")
         emitir_log(f"Erro na análise visual local: {e}")
         return None
 if __name__ == "__main__":
