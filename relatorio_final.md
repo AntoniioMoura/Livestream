@@ -1,17 +1,23 @@
 # Relatório da live
 
-A análise personalizada não foi gerada.
+Não foi possível gerar a análise personalizada.
+
+## Indicadores da sessão
+- **Fluency**: 0/100 (confiança low). Sem falas suficientes.
+- **Grammar**: 0/100 (confiança low). Sem falas suficientes.
+- **Vocabulary**: 0/100 (confiança low). Sem falas suficientes.
+- **Clarity**: 0/100 (confiança low). Sem falas suficientes.
 
 ## Pontos fortes
-- Você concluiu a sessão de prática e pode tentar novamente na próxima live.
+Sem itens nesta sessão.
 
-## Pontos de atenção
-- Não houve frases transcritas suficientes para avaliar o inglês.
+## Padrões a desenvolver
+Sem itens nesta sessão.
 
-## Próximos passos
-- Use frases curtas em inglês e faça uma pausa para o reconhecimento de voz concluir cada trecho.
+## Plano de prática
+Sem itens nesta sessão.
 
-## Correções
+## Correções importantes
 
 
 ## Vocabulário

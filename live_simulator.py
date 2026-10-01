@@ -145,12 +145,12 @@ def chamar_ia_bot(
     mensagem_rejeitada=None,
     contexto_visual=None,
     pergunta_streamer=None,
+    persona_forcada=None # ADICIONADO: Parâmetro para forçar quem foi chamado
 ):
     configuracao = configuracao or carregar_configuracao()
     ultimas_mensagens = historico_da_live[-20:] if len(historico_da_live) > 0 else ["Chat is empty."]
     contexto_chat = "\n".join(ultimas_mensagens)
     
-    # 2. Efeito Manada (Ajuste do Evento)
     if fala_do_streamer == "visual_reaction":
         evento = f"A new screenshot analysis is ready: {json.dumps(contexto_visual, ensure_ascii=False)}"
         if pergunta_streamer:
@@ -162,17 +162,35 @@ def chamar_ia_bot(
                 f"while staying on this visual context: {json.dumps(contexto_visual, ensure_ascii=False)}"
             )
         else:
-            evento = "Another viewer just sent a message. React to it! Agree, laugh, or add to the hype to create a herd effect in the chat."
+            evento = "Another viewer just sent a message. React to it! Agree, laugh, or add to the hype."
     elif fala_do_streamer:
         evento = f"Streamer just said: {json.dumps(fala_do_streamer, ensure_ascii=False)}"
     else:
-        evento = "The streamer is focused on the game. Start or continue a brief conversation based on recent chat or visible game context."
+        evento = "Idle chat. Ask a casual question, greet the streamer, or talk about the vibe."
 
-    restricao = ""
-    if bots_excluidos and len(bots_excluidos) > 0:
-        nomes_proibidos = ", ".join(bots_excluidos)
-        restricao = f"IMPORTANT: DO NOT pick any of these personas: {nomes_proibidos}."
+    # 1. LÓGICA DE FORÇAR A PERSONA MENCIONADA
+    personas_disponiveis = configuracao['personas'].copy()
+    if persona_forcada and persona_forcada in personas_disponiveis:
+        # Se o streamer chamou alguém, APENAS ele pode responder
+        personas_disponiveis = {persona_forcada: personas_disponiveis[persona_forcada]}
+    else:
+        if bots_excluidos:
+            for bot_ignorado in bots_excluidos:
+                personas_disponiveis.pop(bot_ignorado, None)
+        if not personas_disponiveis:
+            personas_disponiveis = configuracao['personas']
+            
+    lista_personas = "\n".join([f'- "{nome}": {desc}' for nome, desc in personas_disponiveis.items()])
 
+    # 2. DEFINIÇÃO DA TRADUÇÃO E JSON
+    if configuracao.get("use_translator") and configuracao["language"] == "en":
+        regra_traducao = "15. TRANSLATION: You MUST translate your message to Brazilian Portuguese and put it in the 'traducao' key."
+        exemplo_json = '{"nome": "Jake", "mensagem": "English text here", "traducao": "Texto em pt-br aqui"}'
+    else:
+        regra_traducao = ""
+        exemplo_json = '{"nome": "Jake", "mensagem": "Text here"}'
+
+    # 3. REGRAS ATUALIZADAS (Foco na Regra 7 para barrar invenções)
     complexidade = {
         "simple": "Use familiar words, simple ideas, and short direct reactions.",
         "normal": "Use casual gamer language and keep the reaction direct.",
@@ -182,58 +200,32 @@ def chamar_ia_bot(
     idioma = "Brazilian Portuguese" if configuracao["language"] == "pt" else "English"
     limite_palavras = {"simple": 6, "normal": 8, "advanced": 10}[configuracao["complexity"]]
     nome_streamer = configuracao["streamer_name"]
-    instrucao_nome_streamer = (
-        f'The streamer goes by "{nome_streamer}". Use this name naturally from time to time when addressing them; '
-        "do not force it into every message."
-        if nome_streamer
-        else "No streamer name was provided. Do not invent one."
-    )
-    instrucao_visual = (
-        "VISUAL GROUP: Every bot in this response group must react to the latest screenshot analysis. "
-        "The first bot should address the scene or streamer question; later bots should add distinct reactions "
-        "to that same scene. Do not switch to unrelated topics or invent visible details."
-        if contexto_visual
-        else ""
-    )
-
-# LOG ZERO: Verifica se a configuração realmente chegou no Python
-    emitir_log(f"[Tradutor-Log] 0. Configurações -> Tradutor: {configuracao.get('use_translator')} | Idioma: {configuracao['language']}")
-
-    # FORÇANDO O TEMPLATE JSON PARA A IA
-    if configuracao.get("use_translator") and configuracao["language"] == "en":
-        regra_traducao = "15. TRANSLATION (CRITICAL): You MUST translate your message to Brazilian Portuguese and include it in the 'traducao' key."
-        exemplo_json = '{"nome": "Jake", "mensagem": "English text here", "traducao": "Texto em português aqui"}'
-    else:
-        regra_traducao = ""
-        exemplo_json = '{"nome": "Jake", "mensagem": "Text here"}'
+    instrucao_nome_streamer = f'The streamer goes by "{nome_streamer}".' if nome_streamer else "No streamer name."
+    instrucao_visual = "VISUAL GROUP: Focus strictly on the screenshot context provided." if contexto_visual else ""
 
     system_prompt = f"""
     You are simulating a Twitch chat for a friendly gaming stream. 
     
     STRICT RULES:
-     1. LENGTH: Aim for 3-6 words; never exceed {limite_palavras} words.
-     2. ONE THOUGHT: Write one brief reaction or one short question. No explanations, backstory, lists, or multi-part questions.
-     3. CHAT STYLE: Sound like a real viewer typing quickly; prefer short phrases over polished or complex sentences.
-     4. ANTI-ECHO (CRITICAL): Check all recent bot messages, not only the last chat line. Never repeat the same message, even if other viewers spoke in between.
-     5. DIRECT REPLY: When a streamer message is provided, reply to that exact message first. Do not change the subject.
-     6. GREETINGS: If the streamer greets you or the chat, greet them back instead of introducing a game event or story.
-     7. CONTINUITY: Read recent chat. If another bot already answered this streamer message, add a different short reaction to the same topic.
-     8. NO INVENTED STORIES: Never claim that you are currently playing, seeing, or doing something. Do not invent personal gaming experiences.
+     1. LENGTH: 1 to {limite_palavras} words MAXIMUM.
+     2. ONE THOUGHT: Write one brief reaction or short question.
+     3. CHAT STYLE: Sound like a viewer typing quickly on a keyboard.
+     4. ANTI-ECHO: Read the Recent Chat History. NEVER repeat what was already said.
+     5. DIRECT REPLY: If a streamer message is provided, reply to it directly.
+     6. GREETINGS: If the streamer greets you, greet them back.
+     7. GROUNDED CONVERSATION (CRITICAL): Do NOT invent in-game events (like 'epic kill', 'I see a dragon') unless reacting to a Visual Context or a specific game event mentioned by the streamer. For idle chat, stick to generic topics (asking how the streamer is, stream quality, saying hi, etc.).
+     8. NO INVENTED STORIES: Never claim you are playing the game yourself.
      9. STREAMER NAME: {instrucao_nome_streamer}
-     10. DIRECT ADDRESS: If the streamer mentions a persona by name, that persona must reply.
-     11. EMOTES: Occasionally use one fitting Twitch emote or emoji.
-     12. TOPIC: Stay relevant to the streamer's latest message, recent chat, or theme: {configuracao['theme']}.
-     13. LANGUAGE (CRITICAL): Write your message EXCLUSIVELY in {idioma}. You are strictly forbidden from mirroring the streamer's language. If they speak Portuguese and your language is English, reply in English.
+     10. DIRECT ADDRESS: If the streamer calls your persona by name, you must reply.
+     11. EMOTES: Occasionally use one Twitch emote.
+     12. TOPIC: Stay relevant to the theme: {configuracao['theme']}.
+     13. LANGUAGE: Write 'mensagem' EXCLUSIVELY in {idioma}.
      14. COMPLEXITY: {complexidade}
      {regra_traducao}
     {instrucao_visual}
-    {restricao}
     
-    Choose ONE persona and always follow its behavior description:
-    - "Jake": {configuracao['personas']['Jake']}
-    - "Lulu_Cat": {configuracao['personas']['Lulu_Cat']}
-    - "kevin_noob": {configuracao['personas']['kevin_noob']}
-    - "Lord_meme": {configuracao['personas']['Lord_meme']}
+    Choose ONE persona from this list below and follow its behavior strictly:
+    {lista_personas}
 
     Recent Chat History:
     {contexto_chat}
@@ -245,7 +237,6 @@ def chamar_ia_bot(
     {exemplo_json}
     """
     
-    # Ajuste fino da requisição do bot caso seja um efeito manada
     user_content = "Generate one brief message that fits the ongoing game or chat conversation."
     if fala_do_streamer == "visual_reaction":
         user_content = f"React to this screenshot analysis: {json.dumps(contexto_visual, ensure_ascii=False)}"
@@ -257,15 +248,16 @@ def chamar_ia_bot(
             user_content += f" Keep your reaction on this screenshot: {json.dumps(contexto_visual, ensure_ascii=False)}"
     elif fala_do_streamer:
         user_content = f"Reply directly to the streamer's latest message: {json.dumps(fala_do_streamer, ensure_ascii=False)}"
+        
     if mensagem_rejeitada:
         user_content += (
-            " Your previous draft was rejected as a duplicate. Write a genuinely different reaction, "
-            f"not a paraphrase of: {json.dumps(mensagem_rejeitada, ensure_ascii=False)}"
+            f" WARNING: Your previous draft '{mensagem_rejeitada}' was rejected. "
+            "You MUST write something COMPLETELY DIFFERENT now and ensure you picked an allowed persona."
         )
-    
+
     try:
         payload = {
-            "model": "llama3.1", # Troque para "qwen2.5" se preferir
+            "model": "llama3.1",
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_content}
@@ -273,28 +265,23 @@ def chamar_ia_bot(
             "format": "json", 
             "stream": False,
             "options": {
-                "temperature": 0.85,
+                "temperature": 0.8,
                 "num_predict": 60
             }
         }
-
-        inicio_geracao = time.perf_counter()
+        
         resposta = requests.post("http://localhost:11434/api/chat", json=payload, timeout=20)
         resposta.raise_for_status()
-        emitir_log(f"Ollama (chat) respondeu em {time.perf_counter() - inicio_geracao:.2f}s.")
         
         dados_json = resposta.json()
         texto_resposta = dados_json["message"]["content"].strip()
-        
         resposta_json = json.loads(texto_resposta)
-
-        emitir_log(f"\n[Tradutor-Log] 1. JSON bruto retornado pela IA: {resposta_json}") # NOVA LINHA
+        
         return (
             resposta_json.get("nome", "Viewer"), 
             resposta_json.get("mensagem", "..."),
-            resposta_json.get("traducao", None) # Nova chave
-        )  
-          
+            resposta_json.get("traducao", None)
+        )
     except Exception as e:
         emitir_log(f"Erro ao gerar mensagem no Ollama: {e}")
         return None
@@ -304,14 +291,15 @@ def avaliar_fala_professor(fala, configuracao):
     emitir_log(f"\n[Professor-Log] 1. Iniciando análise para: '{fala}'")
     idioma_alvo = "English" if configuracao["language"] == "en" else "Brazilian Portuguese"
     
-    prompt_sistema = f"""You are a strict but practical {idioma_alvo} language teacher.
+    prompt_sistema = f"""You are a practical {idioma_alvo} language teacher for a Twitch gaming livestream.
 Review the learner's speech transcription. 
 CRITICAL RULES:
-1. ONLY correct important grammatical errors (e.g., missing prepositions, wrong verb tense).
-2. IGNORE punctuation, capitalization, and comma placement completely.
-3. IGNORE casual speech style (e.g., abbreviations like "what's", filler words).
-4. EXPLANATION MUST BE EXTREMELY SHORT AND DIRECT: Maximum 1 short sentence. No complex grammar jargon. (e.g., "Use 'at' para focar em algo." or "'Was' não combina com substantivos aqui.")
-If no significant error exists, you MUST return empty strings for "correcao" and "explicacao".
+1. ONLY correct genuine grammatical errors (e.g., wrong verb tense, subject-verb agreement, missing prepositions).
+2. NEVER correct informality, slang, or gamer culture words (e.g., "guys", "bro", "gonna", "wanna", "dude"). Twitch chats are inherently informal.
+3. IGNORE stylistic choices. If the grammar is correct, DO NOT suggest "better", "more natural", or "more formal" ways to say it.
+4. IGNORE punctuation, capitalization, and comma placement completely.
+5. EXPLANATION MUST BE EXTREMELY SHORT AND DIRECT: Maximum 1 short sentence. No complex grammar jargon.
+If no significant grammatical error exists, you MUST return empty strings for "correcao" and "explicacao".
 Return ONLY valid JSON with keys "correcao" and "explicacao".
 Explain in Brazilian Portuguese."""
 
@@ -493,9 +481,41 @@ def iniciar_live():
             silencioso=silencioso,
         )
         bots_da_rodada = []
+        
+        # LÓGICA DE DIRECIONAMENTO DE RESPOSTA
+        persona_mencionada = None
+        if foco and isinstance(foco, str) and foco not in ["visual_reaction", "chain_reaction"]:
+            texto_foco = foco.lower()
+            
+            # 1. Prioridade Máxima: O streamer chamou alguém pelo nome?
+            for nome_bot_cfg in configuracao['personas'].keys():
+                nome_simples = nome_bot_cfg.split('_')[0].lower() # Pega "kevin" de "kevin_noob"
+                if re.search(rf"\b{nome_simples}\b", texto_foco) or nome_bot_cfg.lower() in texto_foco:
+                    persona_mencionada = nome_bot_cfg
+                    break
+            
+            # 2. Contexto Contínuo: O streamer está respondendo a uma pergunta recente?
+            if not persona_mencionada and historico_da_live:
+                # Pega as últimas 3 mensagens e inverte (olha da mais recente para a mais antiga)
+                ultimas_mensagens = reversed(historico_da_live[-3:])
+                
+                for linha in ultimas_mensagens:
+                    if "?" in linha:
+                        # Achou uma pergunta! Vamos identificar quem foi o autor
+                        for nome_bot_cfg in configuracao['personas'].keys():
+                            if linha.startswith(f"{nome_bot_cfg}:"):
+                                persona_mencionada = nome_bot_cfg
+                                emitir_log(f"Contexto Ativo: Retomando diálogo com {persona_mencionada} após pergunta recente.")
+                                break
+                    
+                    # Se já encontrou a persona que fez a pergunta, para de procurar nas outras linhas
+                    if persona_mencionada:
+                        break
 
         for indice in range(quantidade):
             if evento_parada.is_set():
+                break
+            # ... (MANTENHA O RESTANTE DO LOOP INTACTO DAQUI PARA BAIXO) ...
                 break
             if indice > 0:
                 time.sleep(random.uniform(0.5, 1.5))
@@ -504,58 +524,60 @@ def iniciar_live():
             if grupo_visual:
                 foco_atual = "visual_reaction" if indice == 0 else "chain_reaction"
 
+            bots_excluidos_agora = list(set(bots_da_rodada + fila_de_cooldown_bots))
+            
+            # Se alguém foi mencionado, tira ele do castigo para poder responder!
+            if persona_mencionada and persona_mencionada in bots_excluidos_agora:
+                bots_excluidos_agora.remove(persona_mencionada)
+            
             mensagem_rejeitada = None
             resposta = None
-            for tentativa in range(2):
+            
+            for tentativa in range(3): 
                 resposta = chamar_ia_bot(
                     foco_atual,
                     historico_da_live,
-                    bots_da_rodada if grupo_visual else fila_de_cooldown_bots,
+                    bots_excluidos_agora,
                     configuracao,
                     mensagem_rejeitada=mensagem_rejeitada,
                     contexto_visual=contexto_visual,
                     pergunta_streamer=pergunta_streamer if grupo_visual else None,
+                    # Força a IA a usar a persona mencionada apenas na primeira resposta
+                    persona_forcada=persona_mencionada if indice == 0 else None
                 )
 
                 if resposta is None:
                     break
 
                 nome_bot, mensagem, traducao = resposta
-            
-                historico_da_live.append(f"{nome_bot}: {mensagem}")
-                salvar_historico(historico_da_live)
-            
-                # Envia a tradução junto com o evento
-                emitir_evento("message", tipo_mensagem="bot", nome=nome_bot, mensagem=mensagem, traducao=traducao)
-
-                persona_repetida = grupo_visual and nome_bot in bots_da_rodada
+                
+                # BARREIRA CONTRA ALUCINAÇÃO DE BOT (Adeus, Sly_Ninja)
+                if nome_bot not in configuracao['personas']:
+                    emitir_log(f"Rejeitado: IA inventou o bot '{nome_bot}'.")
+                    mensagem_rejeitada = mensagem
+                    continue
+                
+                persona_repetida = nome_bot in bots_excluidos_agora
                 mensagem_repetida = _mensagem_ja_usada_recentemente(mensagem, historico_da_live)
+                
                 if not persona_repetida and not mensagem_repetida:
-                    break
+                    break 
 
-                emitir_log(
-                    f"Resposta repetida na tentativa {tentativa + 1}; solicitando uma nova mensagem."
-                )
+                emitir_log(f"Rejeitado: Bot {nome_bot} (Repetido: {persona_repetida}) | Msg (Repetida: {mensagem_repetida})")
                 mensagem_rejeitada = mensagem
             else:
-                emitir_log("Resposta repetida descartada após nova tentativa.")
+                emitir_log("Resposta descartada após 3 tentativas de repetição ou alucinação.")
                 continue
             
             if resposta is None:
-                emitir_evento(
-                    "error",
-                    mensagem="Não foi possível gerar uma mensagem. Verifique a conexão e o modelo do Ollama.",
-                )
+                emitir_evento("error", mensagem="Erro de comunicação com o Ollama.")
                 break
 
-            nome_bot, mensagem = resposta
             historico_da_live.append(f"{nome_bot}: {mensagem}")
             salvar_historico(historico_da_live)
-            emitir_evento("message", tipo_mensagem="bot", nome=nome_bot, mensagem=mensagem)
-            if grupo_visual:
-                bots_da_rodada.append(nome_bot)
+            emitir_evento("message", tipo_mensagem="bot", nome=nome_bot, mensagem=mensagem, traducao=traducao)
             
-            # Atualiza a fila global (lembra apenas os 2 últimos bots)
+            bots_da_rodada.append(nome_bot)
             fila_de_cooldown_bots.append(nome_bot)
             if len(fila_de_cooldown_bots) > 2:
                 fila_de_cooldown_bots.pop(0)
@@ -686,7 +708,6 @@ def iniciar_live():
                     resposta_ociosa_pendente = False
                     historico_da_live.append(f"Streamer: {fala_usuario}")
                     salvar_historico(historico_da_live)
-                    solicitar_feedback_professor(fala_usuario)
                     
                     emitir_evento("message", tipo_mensagem="streamer", nome="Você", mensagem=fala_usuario)
                     
@@ -699,6 +720,7 @@ def iniciar_live():
                     
                     ultimo_momento_interacao = time.time()
                     proximo_intervalo_silencio = calcular_intervalo_silencio(configuracao)
+                    solicitar_feedback_professor(fala_usuario)
 
                 # ==========================================
                 # 2. SILÊNCIO
@@ -832,29 +854,35 @@ def capturar_e_analisar_tela(
 
         contexto_worldbuilding = selecionar_contexto_worldbuilding(documento_worldbuilding)
         
-        prompt_visao = f"""[GAME KNOWLEDGE BASE]
-        Game: {nome_jogo_worldbuilding or 'Unspecified'}
+        # 1. Prompt draconiano para forçar o foco no seu jogo
+        prompt_visao = f"""You are a strict, objective visual analyzer dedicated EXCLUSIVELY to the game '{nome_jogo_worldbuilding or 'Unspecified'}'.
+        
+        [GAME KNOWLEDGE BASE]
         Live Theme: {tema_live.strip() if tema_live else 'Unspecified'}
         Context: {contexto_worldbuilding if contexto_worldbuilding else 'None'}
 
-        Based on the [GAME KNOWLEDGE BASE] above, describe what is CURRENTLY happening in this image in 2 to 4 concise sentences.
-        Focus strictly on immediate action, visible enemies, player character, and health/HUD state.
-        CRITICAL RULE 1: Only name locations, enemies, or items from the knowledge base if they visually match the image. Do not invent details.
-        CRITICAL RULE 2: If you see objects, items, or creatures that are blurry, ambiguous, or unrecognizable, DO NOT guess what they are (e.g., do not call a green plant a 'defeated monster'). Instead, explicitly describe them as "unidentified objects", "strange shapes", or "unknown items". Let them be a mystery!
-        Return ONLY the description."""
+        TASK: Describe what is CURRENTLY happening in this screenshot in 1 to 3 concise sentences.
+        
+        CRITICAL RULES:
+        1. FORBIDDEN FRANCHISES: NEVER mention "The Witcher", "Geralt", "Skyrim", or any other game franchise. This image is 100% from '{nome_jogo_worldbuilding or 'Unspecified'}'.
+        2. NO LORE HALLUCINATION: Focus STRICTLY on the immediate action, visible UI/HUD, and visible entities. Do not invent background stories.
+        3. STRICT NAMING: Use the [GAME KNOWLEDGE BASE] for names. If a creature or item does not perfectly match the text, explicitly call it an "unidentified creature" or "unknown object". Do NOT guess names.
+        4. LANGUAGE MANDATORY: You MUST write your entire description EXCLUSIVELY IN ENGLISH. Do not use Portuguese or any other language, even if the [GAME KNOWLEDGE BASE] contains it.
+        Return ONLY the raw visual description."""
 
         if fala_do_streamer and fala_do_streamer.strip():
             assunto_visual = _extrair_assunto_visual(fala_do_streamer)
             if assunto_visual:
                 prompt_visao += f"\n\nUSER QUESTION: The streamer specifically asked about '{assunto_visual}'. Address this if it is visible."
 
+        # 2. Temperatura reduzida a ZERO para cortar invenções
         payload = {
             "model": MODELO_VISAO,
             "prompt": prompt_visao,
             "images": [imagem_base64],
             "stream": False,
             "options": {
-                "temperature": 0.2,
+                "temperature": 0.0, # Zera a criatividade do modelo visual
                 "repeat_penalty": 1.15
             }
         }

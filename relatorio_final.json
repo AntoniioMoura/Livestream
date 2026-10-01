@@ -1,22 +1,33 @@
 {
-  "summary": "A análise personalizada não foi gerada.",
-  "strengths": [
-    "Você concluiu a sessão de prática e pode tentar novamente na próxima live."
-  ],
-  "weaknesses": [
-    "Não houve frases transcritas suficientes para avaliar o inglês."
-  ],
-  "improvements": [
-    "Use frases curtas em inglês e faça uma pausa para o reconhecimento de voz concluir cada trecho."
-  ],
+  "summary": "Não foi possível gerar a análise personalizada.",
+  "strengths": [],
+  "weaknesses": [],
+  "improvements": [],
   "corrections": [],
   "vocabulary": [],
+  "transcription_notes": [],
   "metrics": {
-    "fluency": 0,
-    "grammar": 0,
-    "vocabulary": 0,
-    "clarity": 0
+    "fluency": {
+      "score": 0,
+      "confidence": "low",
+      "evidence": "Sem falas suficientes."
+    },
+    "grammar": {
+      "score": 0,
+      "confidence": "low",
+      "evidence": "Sem falas suficientes."
+    },
+    "vocabulary": {
+      "score": 0,
+      "confidence": "low",
+      "evidence": "Sem falas suficientes."
+    },
+    "clarity": {
+      "score": 0,
+      "confidence": "low",
+      "evidence": "Sem falas suficientes."
+    }
   },
   "hasTranscript": true,
-  "error": "GROQ_API_KEY não está configurada no ambiente do aplicativo."
+  "error": "A análise da IA falhou. O histórico e o resumo local continuam disponíveis."
 }
